@@ -5,6 +5,12 @@ open System.IO
 open System.Text.Json
 
 /// Configuration loaded from code-intel.json (or defaults).
+/// A named scope maps to a set of source directories.
+type ScopeDefinition = {
+    Name: string
+    Dirs: string[]
+}
+
 type CodeSightConfig = {
     RepoRoot: string
     SrcDirs: string[]
@@ -24,6 +30,7 @@ type CodeSightConfig = {
     NoiseWords: string[]
     UtilityPatterns: string[]
     StagesDir: string
+    Scopes: ScopeDefinition[]
 }
 
 module Config =
@@ -36,7 +43,25 @@ module Config =
         let candidates = [| "src"; "lib"; "Source"; "app" |]
         let found = candidates |> Array.filter (fun d -> Directory.Exists(Path.Combine(repoRoot, d)))
         if found.Length > 0 then found
-        else [| "." |]  // fallback: index from root
+        else [| "." |]
+
+    /// Auto-detect scopes from directory structure.
+    let private detectScopes (repoRoot: string) (srcDirs: string[]) =
+        let scopes = ResizeArray<ScopeDefinition>()
+        // "all" scope = everything
+        scopes.Add({ Name = "all"; Dirs = srcDirs })
+        // Individual directories as scopes
+        for d in srcDirs do
+            scopes.Add({ Name = d; Dirs = [| d |] })
+        // Check for common patterns
+        let testDirs = [| "tests"; "test"; "Tests" |] |> Array.filter (fun d -> Directory.Exists(Path.Combine(repoRoot, d)))
+        if testDirs.Length > 0 then
+            scopes.Add({ Name = "tests"; Dirs = testDirs })
+            scopes.Add({ Name = "all"; Dirs = Array.append srcDirs testDirs })
+        let toolDirs = [| "tools"; "scripts" |] |> Array.filter (fun d -> Directory.Exists(Path.Combine(repoRoot, d)))
+        if toolDirs.Length > 0 then
+            scopes.Add({ Name = "tools"; Dirs = toolDirs })
+        scopes.ToArray()
 
     /// Load config from code-intel.json, or build defaults.
     let load (repoRoot: string) =
@@ -84,11 +109,23 @@ module Config =
                 NoiseWords = strArr "noiseWords" [||]
                 UtilityPatterns = strArr "utilityPatterns" [| "Helper"; "Utils"; "Common"; "Shared" |]
                 StagesDir = Path.Combine(parsersDir, "stages")
+                Scopes =
+                    match root.TryGetProperty("scopes") with
+                    | true, scopesEl ->
+                        scopesEl.EnumerateObject()
+                        |> Seq.map (fun prop ->
+                            { Name = prop.Name
+                              Dirs = prop.Value.EnumerateArray() |> Seq.map (fun v -> v.GetString()) |> Seq.toArray })
+                        |> Seq.toArray
+                    | _ ->
+                        let srcDirs = strArr "srcDirs" (detectSrcDirs repoRoot)
+                        detectScopes repoRoot srcDirs
             }
         else
+            let srcDirs = detectSrcDirs repoRoot
             {
                 RepoRoot = repoRoot
-                SrcDirs = detectSrcDirs repoRoot
+                SrcDirs = srcDirs
                 Extensions = defaultExtensions
                 Exclude = defaultExclude
                 IndexDir = indexDir
@@ -105,4 +142,11 @@ module Config =
                 NoiseWords = [||]
                 UtilityPatterns = [| "Helper"; "Utils"; "Common"; "Shared" |]
                 StagesDir = Path.Combine(parsersDir, "stages")
+                Scopes = detectScopes repoRoot srcDirs
             }
+
+    /// Get directories for a named scope.
+    let scopeDirs (cfg: CodeSightConfig) (scope: string) =
+        match cfg.Scopes |> Array.tryFind (fun s -> s.Name = scope) with
+        | Some s -> s.Dirs
+        | None -> cfg.SrcDirs

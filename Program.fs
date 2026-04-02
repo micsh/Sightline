@@ -6,23 +6,28 @@ let printUsage () =
     eprintfn "AITeam.CodeSight — code intelligence for any codebase"
     eprintfn ""
     eprintfn "Usage:"
-    eprintfn "  code-sight index [--repo <path>]     Build/update index (incremental)"
-    eprintfn "  code-sight modules [--repo <path>]   Show project map"
-    eprintfn "  code-sight search <js> [--repo <path>]  Run a query"
-    eprintfn "  code-sight repl [--repo <path>]      Interactive mode"
+    eprintfn "  code-sight index [--repo <path>]                     Build/update index"
+    eprintfn "  code-sight modules [--repo <path>]                   Show project map"
+    eprintfn "  code-sight search <js> [--repo <path>] [--scope <s>] Run a query"
+    eprintfn "  code-sight repl [--repo <path>] [--scope <s>]        Interactive mode"
+    eprintfn "  code-sight scopes [--repo <path>]                    List available scopes"
     eprintfn ""
 
 let parseArgs (args: string[]) =
     let mutable repo = Environment.CurrentDirectory
     let mutable command = ""
     let mutable query = ""
+    let mutable scope = ""
     let mutable i = 0
     while i < args.Length do
         match args.[i] with
         | "--repo" when i + 1 < args.Length ->
             repo <- args.[i + 1]
             i <- i + 2
-        | "index" | "modules" | "repl" ->
+        | "--scope" when i + 1 < args.Length ->
+            scope <- args.[i + 1]
+            i <- i + 2
+        | "index" | "modules" | "repl" | "scopes" ->
             command <- args.[i]
             i <- i + 1
         | "search" when i + 1 < args.Length ->
@@ -37,17 +42,20 @@ let parseArgs (args: string[]) =
             query <- arg
             i <- i + 1
         | _ -> i <- i + 1
-    repo, command, query
+    repo, command, query, scope
 
 let runIndex (cfg: CodeSightConfig) =
     let hashesPath = Path.Combine(cfg.IndexDir, "hashes.json")
     Directory.CreateDirectory(cfg.IndexDir) |> ignore
 
-    // Find source files, normalize to relative paths for consistent hashing
-    let allFilesAbs = TreeSitterChunker.findSourceFiles cfg
+    // Index ALL scope dirs (union) so every scope can query
+    let allDirs = cfg.Scopes |> Array.collect (fun s -> s.Dirs) |> Array.distinct
+    let cfgAll = { cfg with SrcDirs = allDirs }
+
+    let allFilesAbs = TreeSitterChunker.findSourceFiles cfgAll
     let toRel (f: string) = Path.GetRelativePath(cfg.RepoRoot, f).Replace("\\", "/")
     let allFilesRel = allFilesAbs |> Array.map toRel
-    eprintfn "Found %d source files in %A" allFilesAbs.Length cfg.SrcDirs
+    eprintfn "Found %d source files in %A (scopes: %s)" allFilesAbs.Length allDirs (cfg.Scopes |> Array.map (fun s -> s.Name) |> String.concat ", ")
 
     // Compute current hashes (relative path → hash)
     let currentHashes = Array.zip allFilesRel allFilesAbs |> Array.map (fun (rel, abs) -> rel, FileHashing.hashFile abs) |> Map.ofArray
@@ -70,7 +78,7 @@ let runIndex (cfg: CodeSightConfig) =
 
         // Chunk changed files
         eprintfn "▶ Chunking %d changed files..." changed.Length
-        let newChunks = TreeSitterChunker.chunkFiles cfg changedAbs
+        let newChunks = TreeSitterChunker.chunkFiles cfgAll changedAbs
         eprintfn "  %d chunks from changed files" newChunks.Length
 
         // Load existing index for unchanged chunks
@@ -90,15 +98,15 @@ let runIndex (cfg: CodeSightConfig) =
 
         // Extract imports and signatures (full — fast)
         eprintfn "▶ Extracting imports..."
-        let imports = TreeSitterChunker.extractImports cfg allFilesAbs |> Array.map (fun i -> i.FilePath, i.Module)
+        let imports = TreeSitterChunker.extractImports cfgAll allFilesAbs |> Array.map (fun i -> i.FilePath, i.Module)
         eprintfn "  %d import edges" imports.Length
 
         eprintfn "▶ Extracting signatures..."
-        let signatures = TreeSitterChunker.extractSignatures cfg allFilesAbs
+        let signatures = TreeSitterChunker.extractSignatures cfgAll allFilesAbs
         eprintfn "  %d signatures" signatures.Length
 
         eprintfn "▶ Extracting type refs..."
-        let typeRefs = TreeSitterChunker.extractTypeRefs cfg allFilesAbs |> Array.map (fun r -> r.FilePath, r.TypeRefs)
+        let typeRefs = TreeSitterChunker.extractTypeRefs cfgAll allFilesAbs |> Array.map (fun r -> r.FilePath, r.TypeRefs)
         eprintfn "  %d files with type refs" typeRefs.Length
 
         // Match signatures to chunks
@@ -147,12 +155,17 @@ let runIndex (cfg: CodeSightConfig) =
 
 [<EntryPoint>]
 let main args =
-    let repo, command, query = parseArgs args
+    let repo, command, query, scope = parseArgs args
 
     match command with
     | "index" ->
         let cfg = Config.load repo
         runIndex cfg
+        0
+    | "scopes" ->
+        let cfg = Config.load repo
+        for s in cfg.Scopes do
+            eprintfn "  %-12s → %s" s.Name (s.Dirs |> String.concat ", ")
         0
     | "modules" | "search" | "repl" ->
         let cfg = Config.load repo
@@ -160,11 +173,27 @@ let main args =
         | None ->
             eprintfn "No index found. Run 'code-sight index' first."
             1
-        | Some index ->
-            // Lazy-load source chunks only when needed (expand/grep/refs/neighborhood)
+        | Some fullIndex ->
+            // Filter index by scope if specified
+            let index =
+                if scope = "" then fullIndex
+                else
+                    let scopeDirs = Config.scopeDirs cfg scope
+                    let inScope (filePath: string) =
+                        scopeDirs |> Array.exists (fun d -> filePath.Replace("\\", "/").StartsWith(d + "/") || filePath.Replace("\\", "/").StartsWith(d + "\\"))
+                    { fullIndex with
+                        Chunks = fullIndex.Chunks |> Array.filter (fun c -> inScope c.FilePath)
+                        Imports = fullIndex.Imports |> Array.filter (fun (f, _) -> inScope f)
+                        TypeRefs = fullIndex.TypeRefs |> Array.filter (fun (f, _) -> inScope f)
+                        // Embeddings need re-indexing to match — for now keep all (search will return some out-of-scope)
+                        CodeEmbeddings = fullIndex.CodeEmbeddings
+                        SummaryEmbeddings = fullIndex.SummaryEmbeddings }
+
+            // Lazy-load source chunks
             let chunksRef = lazy (
-                let allFiles = TreeSitterChunker.findSourceFiles cfg
-                if allFiles.Length > 0 then Some (TreeSitterChunker.chunkFiles cfg allFiles)
+                let scopeCfg = if scope = "" then cfg else { cfg with SrcDirs = Config.scopeDirs cfg scope }
+                let allFiles = TreeSitterChunker.findSourceFiles scopeCfg
+                if allFiles.Length > 0 then Some (TreeSitterChunker.chunkFiles scopeCfg allFiles)
                 else None)
             // For modules/files/context/impact/imports/deps — no chunks needed
             // Pass None initially; primitives that need chunks will force the lazy
@@ -213,4 +242,5 @@ let main args =
         eprintfn "Unknown command: %s" other
         printUsage()
         1
+
 
