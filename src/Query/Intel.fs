@@ -38,12 +38,7 @@ module Intel =
             "code_search",
             "Query the code index. Functions: search(q,opts), refs(name,opts), grep(pattern,opts), modules(), files(p?), context(file), expand(id), neighborhood(id,opts), impact(type), imports(file), deps(pattern), similar(id,opts). Start with modules() for overview.")
 
-        let copilotPath = @"C:\tools\AITeam\runtimes\win-x64\native\copilot.exe"
-        if not (File.Exists copilotPath) then
-            sprintf "Error: Copilot CLI not found at %s. code_intel requires the Copilot SDK." copilotPath
-        else
-
-        let client = new CopilotClient(CopilotClientOptions(CliPath = copilotPath))
+        let client = new CopilotClient()
         let sessionId = sprintf "code-sight-intel-%d" (DateTimeOffset.UtcNow.ToUnixTimeSeconds())
 
         let userMessage = sprintf "Codebase structure:\n%s\n\nPlaybook:\n%s\n\nQuestion: %s" modulesCache playbook question
