@@ -43,6 +43,12 @@ module Primitives =
         |> Option.map (fun l -> l.Trim())
         |> Option.defaultValue ""
 
+    /// Find source chunk matching an index entry. Used by expand/grep/refs/neighborhood.
+    let private findSource (chunks: CodeChunk[] option) (c: ChunkEntry) =
+        chunks |> Option.bind (fun chs ->
+            chs |> Array.tryFind (fun ch ->
+                ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine))
+
     // ── search ──
 
     let search (index: CodeIndex) (session: QuerySession) (chunks: CodeChunk[] option) (embeddingUrl: string)
@@ -59,7 +65,7 @@ module Primitives =
             |> Array.map (fun (i, sim) ->
                 let c = index.Chunks.[i]
                 let id = session.NextRef(i)
-                let preview = chunks |> Option.bind (fun chs -> chs |> Array.tryFind (fun ch -> ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine)) |> Option.map (fun ch -> previewLine ch.Content) |> Option.defaultValue ""
+                let preview = findSource chunks c |> Option.map (fun ch -> previewLine ch.Content) |> Option.defaultValue ""
                 let d = mdict [ "id", box id; "score", box (Math.Round(float sim, 3)); "kind", box c.Kind; "name", box c.Name; "file", box (Path.GetFileName c.FilePath); "path", box c.FilePath; "line", box c.StartLine; "signature", box c.Signature; "summary", box c.Summary; "preview", box preview ]
                 for kv in c.Extra do d.[kv.Key] <- box kv.Value
                 d)
@@ -107,7 +113,7 @@ module Primitives =
         | None -> mdict [ "error", box (sprintf "ref %s not found" refId) ]
         | Some chunkIdx ->
             let c = index.Chunks.[chunkIdx]
-            let code = chunks |> Option.bind (fun chs -> chs |> Array.tryFind (fun ch -> ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine) |> Option.map (fun ch -> ch.Content)) |> Option.defaultValue "(source not loaded)"
+            let code = findSource chunks c |> Option.map (fun ch -> ch.Content) |> Option.defaultValue "(source not loaded)"
             let imps = IndexStore.fileImports index (Path.GetFileName c.FilePath)
             let baseName = Path.GetFileNameWithoutExtension(c.FilePath).ToLowerInvariant()
             let depFiles = IndexStore.dependents index baseName
@@ -128,11 +134,11 @@ module Primitives =
             let after' = min afterCount 5
             let mkCompact (i, c: ChunkEntry) =
                 let id = session.NextRef(i)
-                let preview = chunks |> Option.bind (fun chs -> chs |> Array.tryFind (fun ch -> ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine) |> Option.map (fun ch -> ch.Content.Split('\n').[0].Trim())) |> Option.defaultValue ""
+                let preview = findSource chunks c |> Option.map (fun ch -> ch.Content.Split('\n').[0].Trim()) |> Option.defaultValue ""
                 mdict [ "id", box id; "kind", box c.Kind; "name", box c.Name; "line", box c.StartLine; "endLine", box c.EndLine; "signature", box c.Signature; "summary", box c.Summary; "preview", box preview ]
             let beforeChunks = fileChunks.[max 0 (targetPos - before') .. max 0 (targetPos - 1)] |> Array.map mkCompact
             let afterChunks = fileChunks.[min (fileChunks.Length - 1) (targetPos + 1) .. min (fileChunks.Length - 1) (targetPos + after')] |> Array.filter (fun (i, _) -> i <> chunkIdx) |> Array.map mkCompact
-            let targetCode = chunks |> Option.bind (fun chs -> chs |> Array.tryFind (fun ch -> ch.FilePath = target.FilePath && ch.Name = target.Name && ch.StartLine = target.StartLine) |> Option.map (fun ch -> ch.Content)) |> Option.defaultValue "(source not loaded)"
+            let targetCode = findSource chunks target |> Option.map (fun ch -> ch.Content) |> Option.defaultValue "(source not loaded)"
             let imps = IndexStore.fileImports index (Path.GetFileName target.FilePath)
             mdict [ "file", box (Path.GetFileName target.FilePath); "imports", box imps; "before", box beforeChunks; "target", box (mdict [ "id", box refId; "kind", box target.Kind; "name", box target.Name; "line", box target.StartLine; "endLine", box target.EndLine; "signature", box target.Signature; "summary", box target.Summary; "code", box targetCode ]); "after", box afterChunks ]
 
@@ -162,7 +168,7 @@ module Primitives =
                 if results.Count < limit then
                     let c = index.Chunks.[i]
                     if (String.IsNullOrEmpty(kind) || c.Kind = kind) && (String.IsNullOrEmpty(filePattern) || c.FilePath.Contains(filePattern, StringComparison.OrdinalIgnoreCase)) then
-                        match allChunks |> Array.tryFind (fun ch -> ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine) with
+                        match findSource (Some allChunks) c with
                         | Some ch when regex.IsMatch(ch.Content) ->
                             let matchLine = ch.Content.Split('\n') |> Array.tryFind (fun l -> regex.IsMatch(l)) |> Option.map (fun l -> l.Trim()) |> Option.defaultValue ""
                             let id = session.NextRef(i)
@@ -211,7 +217,7 @@ module Primitives =
                 if results.Count < limit then
                     let c = index.Chunks.[i]
                     if not (c.Name.EndsWith(name) || c.Name = name) then
-                        match allChunks |> Array.tryFind (fun ch -> ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine) with
+                        match findSource (Some allChunks) c with
                         | Some ch when regex.IsMatch(ch.Content) ->
                             let matchLine = ch.Content.Split('\n') |> Array.tryFind (fun l -> regex.IsMatch(l)) |> Option.map (fun l -> l.Trim()) |> Option.defaultValue ""
                             let id = session.NextRef(i)
@@ -220,3 +226,5 @@ module Primitives =
                             results.Add(d)
                         | _ -> ()
             results.ToArray()
+
+
