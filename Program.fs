@@ -251,9 +251,16 @@ let main args =
                     engine <- QueryEngine.create index chunksRef.Value cfg.EmbeddingUrl
                     let modulesCache = QueryEngine.eval engine "modules()"
                     let playbooksDir =
-                        let candidate = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "playbooks")
-                        if Directory.Exists candidate then candidate
-                        else Path.Combine(repo, "playbooks")
+                        // 1. Per-repo override
+                        let repoPlaybooks = Path.Combine(repo, ".code-intel", "playbooks")
+                        if Directory.Exists repoPlaybooks then repoPlaybooks
+                        else
+                        // 2. Alongside exe
+                        let exePlaybooks = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "playbooks")
+                        if Directory.Exists exePlaybooks then exePlaybooks
+                        else
+                        // 3. Source tree (dev mode)
+                        Path.Combine(repo, "playbooks")
                     eprintfn "Playbook: %s → dispatching to mini-model..." (Intel.classifyPlaybook query)
                     let result = Intel.run engine playbooksDir query modulesCache
                     printfn "%s" result

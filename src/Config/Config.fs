@@ -68,16 +68,17 @@ module Config =
         let configPath = Path.Combine(repoRoot, "code-intel.json")
         let indexDir = Path.Combine(repoRoot, ".code-intel")
 
-        // Locate parsers: alongside exe, or in the PoC directory
+        // Locate parsers: repo override → alongside exe → fallback
         let exeDir = AppDomain.CurrentDomain.BaseDirectory
         let parsersDir =
-            let candidate = Path.Combine(exeDir, "parsers")
-            if Directory.Exists candidate then candidate
+            // 1. Per-repo override: .code-intel/parsers/
+            let repoOverride = Path.Combine(repoRoot, ".code-intel", "parsers")
+            if Directory.Exists repoOverride && File.Exists(Path.Combine(repoOverride, "ts-chunker.js")) then repoOverride
             else
-                // Fallback: look for the PoC directory
-                let pocDir = Path.Combine(repoRoot, "tools", "embeddings-poc")
-                if Directory.Exists pocDir then pocDir
-                else exeDir
+            // 2. Alongside the exe
+            let exeParsers = Path.Combine(exeDir, "parsers")
+            if Directory.Exists exeParsers then exeParsers
+            else exeDir
 
         if File.Exists configPath then
             let json = File.ReadAllText(configPath)
