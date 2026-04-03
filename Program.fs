@@ -131,21 +131,48 @@ let runIndex (cfg: CodeSightConfig) =
                 if sig' <> "" then { c with Signature = sig' } else c)
 
         // Embeddings: keep old for unchanged, compute new
-        eprintfn "▶ Computing embeddings for %d new chunks..." (finalChunks.Length - oldChunks.Length)
-        // For now, store empty embeddings — will be computed when embedding server is available
+        let newChunkCount = finalChunks.Length - oldChunks.Length
+        eprintfn "▶ Computing embeddings for %d new chunks..." newChunkCount
+
+        // Prepare texts for embedding: context + content for code, name + kind for summary
+        let newChunkTexts =
+            finalChunks.[oldChunks.Length..]
+            |> Array.map (fun c ->
+                let context = if c.Module <> "" then sprintf "%s\n%s:%s" c.Module c.Kind c.Name else sprintf "%s:%s" c.Kind c.Name
+                sprintf "%s\n%s" context (match newChunks |> Array.tryFind (fun ch -> ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine) with Some ch -> ch.Content | None -> c.Name))
+
+        let embedBatch (texts: string[]) =
+            if texts.Length = 0 then [||]
+            else
+                let results = ResizeArray()
+                for batch in texts |> Array.chunkBySize cfg.EmbeddingBatchSize do
+                    match EmbeddingService.embed cfg.EmbeddingUrl batch |> Async.AwaitTask |> Async.RunSynchronously with
+                    | Some embs -> results.AddRange(embs)
+                    | None ->
+                        eprintfn "  Warning: embedding server unavailable — storing empty embeddings"
+                        results.AddRange(Array.init batch.Length (fun _ -> [||]))
+                results.ToArray()
+
+        let newCodeEmbs = embedBatch newChunkTexts
         let codeEmbs =
             match existingIdx with
             | Some idx when idx.CodeEmbeddings.Length = oldChunks.Length ->
-                // Pad with empty arrays for new chunks
-                let newCount = finalChunks.Length - oldChunks.Length
-                Array.append idx.CodeEmbeddings (Array.init newCount (fun _ -> [||]))
-            | _ -> Array.init finalChunks.Length (fun _ -> [||])
+                Array.append idx.CodeEmbeddings newCodeEmbs
+            | _ -> embedBatch (finalChunks |> Array.map (fun c -> sprintf "%s:%s %s" c.Kind c.Name c.Summary))
+
+        // Summary embeddings: use summary text (if available) or name
+        let newSumTexts = finalChunks.[oldChunks.Length..] |> Array.map (fun c -> if c.Summary <> "" then c.Summary else sprintf "%s %s" c.Kind c.Name)
+        let newSumEmbs = embedBatch newSumTexts
         let sumEmbs =
             match existingIdx with
             | Some idx when idx.SummaryEmbeddings.Length = oldChunks.Length ->
-                let newCount = finalChunks.Length - oldChunks.Length
-                Array.append idx.SummaryEmbeddings (Array.init newCount (fun _ -> [||]))
-            | _ -> Array.init finalChunks.Length (fun _ -> [||])
+                Array.append idx.SummaryEmbeddings newSumEmbs
+            | _ -> embedBatch (finalChunks |> Array.map (fun c -> if c.Summary <> "" then c.Summary else sprintf "%s %s" c.Kind c.Name))
+
+        if codeEmbs.Length > 0 && codeEmbs.[0].Length > 0 then
+            eprintfn "  %d embeddings (%d dimensions)" codeEmbs.Length codeEmbs.[0].Length
+        else
+            eprintfn "  Embeddings not available (no server or empty responses)"
 
         let dim = if codeEmbs.Length > 0 && codeEmbs.[0].Length > 0 then codeEmbs.[0].Length else 0
 
