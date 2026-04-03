@@ -9,8 +9,8 @@ open Jint
 module QueryEngine =
 
     /// Create a Jint engine with all primitives wired.
-    let create (index: CodeIndex) (chunks: CodeChunk[] option) (embeddingUrl: string) =
-        let session = QuerySession()
+    let create (index: CodeIndex) (chunks: CodeChunk[] option) (embeddingUrl: string) (indexDir: string) =
+        let session = QuerySession(indexDir)
         let engine = Engine()
 
         // search
@@ -92,7 +92,11 @@ module QueryEngine =
     /// Evaluate JS with IIFE wrapping (avoids let-redeclaration across calls).
     let eval (engine: Engine) (js: string) : string =
         try
-            let trimmed = js.Trim()
+            // Strip JS single-line comments before processing
+            let stripped = js.Split('\n') |> Array.map (fun line ->
+                let commentIdx = line.IndexOf("//")
+                if commentIdx >= 0 then line.Substring(0, commentIdx) else line) |> String.concat "\n"
+            let trimmed = stripped.Trim()
             // If already wrapped in IIFE, evaluate as-is
             let toEval =
                 if trimmed.StartsWith("(") && trimmed.EndsWith(")") then trimmed

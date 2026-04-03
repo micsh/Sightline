@@ -151,15 +151,24 @@ module IndexStore =
             |> Array.sortByDescending snd
             |> Array.take (min k embeddings.Length)
 
+    /// Normalize file input: agents may pass full path, relative path, or just filename.
+    let private matchFile (filePath: string) (input: string) =
+        let inputLower = input.Replace("\\", "/").ToLowerInvariant()
+        let pathLower = filePath.Replace("\\", "/").ToLowerInvariant()
+        let fileNameLower = Path.GetFileName(filePath).ToLowerInvariant()
+        // Match: exact filename, or path ends with input, or input ends with filename
+        fileNameLower = inputLower
+        || pathLower = inputLower
+        || pathLower.EndsWith("/" + inputLower)
+        || inputLower.EndsWith("/" + fileNameLower)
+
     let fileContextByName (index: CodeIndex) (fileName: string) =
-        let target = fileName.ToLowerInvariant()
         index.Chunks |> Array.indexed
-        |> Array.filter (fun (_, c) -> Path.GetFileName(c.FilePath).ToLowerInvariant() = target)
+        |> Array.filter (fun (_, c) -> matchFile c.FilePath fileName)
 
     let fileImports (index: CodeIndex) (fileName: string) =
-        let target = fileName.ToLowerInvariant()
         index.Imports
-        |> Array.filter (fun (f, _) -> Path.GetFileName(f).ToLowerInvariant() = target)
+        |> Array.filter (fun (f, _) -> matchFile f fileName)
         |> Array.map snd
 
     let dependents (index: CodeIndex) (moduleName: string) =

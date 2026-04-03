@@ -232,12 +232,12 @@ let main args =
                 else None)
             // For modules/files/context/impact/imports/deps — no chunks needed
             // Pass None initially; primitives that need chunks will force the lazy
-            let mutable engine = QueryEngine.create index None cfg.EmbeddingUrl
+            let mutable engine = QueryEngine.create index None cfg.EmbeddingUrl cfg.IndexDir
             let needsChunks = [| "expand"; "grep"; "refs"; "neighborhood"; "similar" |]
             let ensureChunks (js: string) =
                 if needsChunks |> Array.exists (fun p -> js.Contains(p)) then
                     if not chunksRef.IsValueCreated then
-                        engine <- QueryEngine.create index chunksRef.Value cfg.EmbeddingUrl
+                        engine <- QueryEngine.create index chunksRef.Value cfg.EmbeddingUrl cfg.IndexDir
 
             match command with
             | "modules" ->
@@ -258,7 +258,7 @@ let main args =
                 eprintfn "  impact(type), imports(file), deps(pattern), similar(id,opts)"
                 eprintfn ""
                 // Pre-load chunks for repl since user will likely need them
-                engine <- QueryEngine.create index chunksRef.Value cfg.EmbeddingUrl
+                engine <- QueryEngine.create index chunksRef.Value cfg.EmbeddingUrl cfg.IndexDir
                 let mutable running = true
                 while running do
                     eprintf "> "
@@ -275,7 +275,7 @@ let main args =
                     1
                 else
                     // Ensure chunks loaded for the mini-agent's code_search calls
-                    engine <- QueryEngine.create index chunksRef.Value cfg.EmbeddingUrl
+                    engine <- QueryEngine.create index chunksRef.Value cfg.EmbeddingUrl cfg.IndexDir
                     let modulesCache = QueryEngine.eval engine "modules()"
                     let playbooksDir =
                         // 1. Per-repo override
@@ -300,5 +300,6 @@ let main args =
         eprintfn "Unknown command: %s" other
         printUsage()
         1
+
 
 

@@ -6,14 +6,36 @@ open System.IO
 open System.Text.RegularExpressions
 
 /// Ref tracking for expand/neighborhood across queries.
-type QuerySession() =
+/// Persists to .code-intel/refs.json for cross-call ref survival.
+type QuerySession(indexDir: string) =
+    let refsPath = Path.Combine(indexDir, "refs.json")
     let refs = Dictionary<string, int>()
     let mutable counter = 0
+
+    do  // Load persisted refs
+        if File.Exists refsPath then
+            try
+                let json = File.ReadAllText(refsPath)
+                let doc = System.Text.Json.JsonDocument.Parse(json)
+                for prop in doc.RootElement.EnumerateObject() do
+                    refs.[prop.Name] <- prop.Value.GetInt32()
+                    let num = prop.Name.Substring(1) |> int
+                    if num > counter then counter <- num
+            with _ -> ()
+
     member _.NextRef(chunkIdx) =
         counter <- counter + 1
         let id = sprintf "R%d" counter
         refs.[id] <- chunkIdx
+        // Persist
+        try
+            let dict = Dictionary<string, int>()
+            for kv in refs do dict.[kv.Key] <- kv.Value
+            let json = System.Text.Json.JsonSerializer.Serialize(dict)
+            File.WriteAllText(refsPath, json)
+        with _ -> ()
         id
+
     member _.GetRef(id: string) =
         match refs.TryGetValue(id) with true, v -> Some v | _ -> None
 
@@ -216,7 +238,9 @@ module Primitives =
             for i in 0..index.Chunks.Length-1 do
                 if results.Count < limit then
                     let c = index.Chunks.[i]
-                    if not (c.Name.EndsWith(name) || c.Name = name) then
+                    // Skip only the exact definition chunk (name matches exactly)
+                    // Don't skip chunks that merely contain the name in their chunk name
+                    if c.Name <> name then
                         match findSource (Some allChunks) c with
                         | Some ch when regex.IsMatch(ch.Content) ->
                             let matchLine = ch.Content.Split('\n') |> Array.tryFind (fun l -> regex.IsMatch(l)) |> Option.map (fun l -> l.Trim()) |> Option.defaultValue ""
