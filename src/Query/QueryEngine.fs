@@ -98,7 +98,6 @@ module QueryEngine =
                 if trimmed.StartsWith("(") && trimmed.EndsWith(")") then trimmed
                 else
                     let lines = trimmed.Split('\n') |> Array.map (fun s -> s.Trim()) |> Array.filter (fun s -> s <> "")
-                    // Join everything into one line, find the last semicolon to split statements from final expression
                     let joined = lines |> String.concat " "
                     let lastSemi = joined.LastIndexOf(';')
                     if lastSemi > 0 && lastSemi < joined.Length - 2 then
@@ -109,13 +108,24 @@ module QueryEngine =
                         else
                             sprintf "(function() { return %s; })()" joined
                     elif joined.StartsWith("let ") || joined.StartsWith("const ") || joined.StartsWith("var ") then
-                        // All declarations, no trailing expression
                         sprintf "(function() { %s })()" joined
                     else
                         sprintf "(function() { return %s; })()" joined
-            let result = engine.Evaluate(toEval)
-            let native = result.ToObject()
-            Format.formatValue native
+
+            // Evaluate JS, then stringify on the JS side to avoid .NET type boundary issues
+            engine.SetValue("__result__", engine.Evaluate(toEval)) |> ignore
+            let jsonResult = engine.Evaluate("typeof __result__ === 'string' ? __result__ : JSON.stringify(__result__, null, 2)")
+            let text = jsonResult.AsString()
+
+            // If result is a known primitive output (array of search results, etc.), apply rich formatting
+            // Otherwise return the JSON as-is — LLMs read JSON fine
+            if text.StartsWith("[R") || text.StartsWith("──") then
+                // Already formatted by a primitive — pass through
+                text
+            else
+                let native = engine.Evaluate("__result__").ToObject()
+                try Format.formatValue native
+                with _ -> text
         with ex -> sprintf "Error: %s" ex.Message
 
 
