@@ -49,7 +49,7 @@ module Intel =
             sprintf "Read a strategy playbook. Available: %s. Pick the one that matches the question." (playbookDescriptions |> String.concat ", "))
 
         let client = new CopilotClient()
-        let sessionId = sprintf "code-sight-intel-%d" (DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+        let sessionId = sprintf "code-sight-intel-%s" (Guid.NewGuid().ToString().Substring(0, 8))
 
         let userMessage = sprintf "Codebase structure:\n%s\n\nQuestion: %s" modulesCache question
 

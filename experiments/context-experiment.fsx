@@ -89,7 +89,7 @@ let runCodeSearch (js: string) =
 
 // ── LLM chat ──
 
-let client = new HttpClient(Timeout = TimeSpan.FromSeconds(120.0))
+let client = new HttpClient(Timeout = TimeSpan.FromSeconds(300.0))
 
 let chat () = task {
     let messages = ResizeArray()
@@ -241,7 +241,8 @@ while running do
                                 let refId = refMatch.Groups.[1].Value
                                 let summary = result.Split('\n') |> Array.tryFind (fun l -> l.Trim().Length > 10) |> Option.defaultValue "(code)"
                                 let cost = estimateTokens result
-                                expandedItems <- expandedItems @ [{ RefId = refId; Summary = summary.Trim().Substring(0, min 60 summary.Trim().Length); TurnIndex = turnCount; TokenCost = cost }]
+                                let summaryShort = let s = summary.Trim() in if s.Length > 60 then s.Substring(0, 60) else s
+                                expandedItems <- expandedItems @ [{ RefId = refId; Summary = summaryShort; TurnIndex = turnCount; TokenCost = cost }]
                                 eprintfn "  [expanded %s: ~%d tokens]" refId cost
 
                         let truncated = if result.Length > 3000 then result.Substring(0, 3000) + "\n... (truncated)" else result
