@@ -33,13 +33,20 @@ module Intel =
             "code_search",
             "Query the code index. Functions: search(q,opts), refs(name,opts), grep(pattern,opts), modules(), files(p?), context(file), expand(id), neighborhood(id,opts), impact(type), imports(file), deps(pattern), similar(id,opts). Start with modules() for overview.")
 
+        let playbookDescriptions = [
+            "orient (what is this codebase?)"
+            "plan (how to implement a feature?)"
+            "blast (impact of changing something?)"
+            "review (architecture and code quality?)"
+            "explore (any other question)"
+        ]
         let readPlaybookTool = AIFunctionFactory.Create(
             Func<string, string>(fun name ->
                 let path = Path.Combine(playbooksDir, sprintf "%s.md" name)
                 if File.Exists path then File.ReadAllText(path)
                 else sprintf "Playbook '%s' not found. Available: %s" name (available |> String.concat ", ")),
             "read_playbook",
-            sprintf "Read a strategy playbook to guide your exploration. Available: %s. Read one before starting your queries." (available |> String.concat ", "))
+            sprintf "Read a strategy playbook. Available: %s. Pick the one that matches the question." (playbookDescriptions |> String.concat ", "))
 
         let client = new CopilotClient()
         let sessionId = sprintf "code-sight-intel-%d" (DateTimeOffset.UtcNow.ToUnixTimeSeconds())
