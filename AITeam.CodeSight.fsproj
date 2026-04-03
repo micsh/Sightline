@@ -27,4 +27,9 @@
     <Compile Include="Program.fs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="parsers\**\*" Exclude="parsers\node_modules\**" CopyToOutputDirectory="PreserveNewest" LinkBase="parsers" />
+    <Content Include="playbooks\**\*.md" CopyToOutputDirectory="PreserveNewest" LinkBase="playbooks" />
+  </ItemGroup>
+
 </Project>
