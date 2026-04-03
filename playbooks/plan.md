@@ -1,25 +1,51 @@
 # Playbook: Plan
 
-Produce an implementation plan for the calling agent's feature request.
-
-## Input
-
-The calling agent describes a feature in natural language.
+Produce an implementation plan for a feature.
 
 ## Output (exactly this structure)
 
 1. **Edit targets** — 1-3 files to modify, in order, with line refs
-2. **Pattern to follow** — one existing example the agent should mimic (include ref ID)
+2. **Pattern to follow** — one existing example to mimic (include ref ID)
 3. **Wiring point** — where to register/connect the new code
-4. **Dependencies** — what imports are needed, what modules are involved
-5. **Risks** — anything tightly coupled or fragile (or "none identified")
+4. **Dependencies** — what imports are needed
+5. **Risks** — anything tightly coupled (or "none identified")
 
-## Approach
+## Step 1: Find relevant code (one call)
 
-1. `search(feature_description, {limit:5})` — find semantically related code
-2. `context(top_file)` on the most relevant file — see its structure
-3. `similar(top_result_id, {limit:3})` — find analogous implementations
-4. `grep("register|wire|create.*handler", {limit:5})` — find wiring/registration patterns
-5. `neighborhood(best_pattern_id, {before:2, after:2})` — show the pattern in context
+```js
+let hits = search("your feature description here", {limit:8});
+({
+  top5: hits.slice(0,5).map(h => ({name: h.name, file: h.file, line: h.line, score: h.score, sig: h.signature, preview: h.preview}))
+})
+```
 
-**You're done when you can name the files, show one pattern, and describe the wiring.** The agent will read the actual code — you just need to point them to the right place.
+Replace the search query with the actual feature description from the user's question.
+
+## Step 2: Understand the pattern and context (one call)
+
+Take the best match from Step 1 and see its neighborhood + find similar code:
+
+```js
+let n = neighborhood("R1", {before:2, after:2});
+let sim = similar("R1", {limit:3});
+({
+  file: n.file, imports: n.imports,
+  before: n.before.map(c => c.name + " " + c.summary),
+  target: n.target.name + " " + n.target.summary,
+  after: n.after.map(c => c.name + " " + c.summary),
+  similar: sim.map(s => ({name: s.name, file: s.file, preview: s.preview}))
+})
+```
+
+Use the actual ref ID from Step 1 results.
+
+## Step 3: Find wiring/registration (one call)
+
+```js
+let wiring = grep("register|wire|create.*handler|add.*tool", {limit:5});
+({results: wiring.map(w => ({name: w.name, file: w.file, matchLine: w.matchLine}))})
+```
+
+## Done
+
+3 calls. Synthesize the plan. If a wiring point is unclear, ONE more context() call on that file.

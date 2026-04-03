@@ -2,24 +2,44 @@
 
 Produce an impact assessment for changing a type, function, or module.
 
-## Input
-
-A type name, function name, or module name.
-
 ## Output (exactly this structure)
 
 1. **Blast radius** — N files, M direct references
-2. **How it's used** — group refs by usage pattern (constructor calls, type annotations, method calls), quote the matchLines
-3. **Risk zones** — which references are most fragile
-4. **Safe changes** — what you can change without breaking callers
-5. **Related types** — anything structurally similar that might need the same change
+2. **How it's used** — group by usage pattern, quote matchLines
+3. **Risk zones** — most fragile references
+4. **Safe changes** — what won't break callers
+5. **Related types** — anything similar that might need the same change
 
-## Approach
+## Step 1: Find definition + all references (one call)
 
-1. `search(name, {limit:1})` — find the definition
-2. `refs(name, {limit:30})` — get all references with matchLines (this is your primary data)
-3. `impact(name)` — cross-check with type-level references
-4. `deps(moduleName)` — module-level dependents
-5. If a reference looks risky, `expand(id)` once to see the full context
+```js
+let def = search("ChecklistTracker", {limit:1});
+let r = refs("ChecklistTracker", {limit:30});
+let byFile = {};
+r.forEach(x => { if (!byFile[x.file]) byFile[x.file] = []; byFile[x.file].push(x.matchLine); });
+({
+  definedIn: def[0] ? def[0].file + ":" + def[0].line : "?",
+  totalRefs: r.length,
+  fileCount: Object.keys(byFile).length,
+  byFile: byFile
+})
+```
 
-**You're done when you can list the affected files and categorize the references.** The matchLines from refs() already tell you HOW it's used — don't expand every reference.
+Replace "ChecklistTracker" with the actual name from the user's question.
+
+## Step 2: Module-level impact (one call)
+
+```js
+let d = deps("ChecklistTracker");
+let imp = impact("ChecklistTracker");
+({
+  moduleDependers: d,
+  typeImpactFiles: imp.map(i => i.file)
+})
+```
+
+## Done
+
+2 calls. The matchLines from Step 1 tell you HOW it's used — categorize them into constructor calls, type annotations, method calls. Synthesize.
+
+If a specific reference looks risky, ONE expand() call to see full context.
