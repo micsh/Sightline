@@ -94,10 +94,21 @@ module QueryEngine =
         try
             let lines = js.Trim().Split('\n') |> Array.map (fun s -> s.Trim()) |> Array.filter (fun s -> s <> "")
             let body =
-                if lines.Length <= 1 then sprintf "return %s" lines.[0]
+                if lines.Length <= 1 then
+                    let line = lines.[0]
+                    // Don't add return to declarations or statements
+                    if line.StartsWith("let ") || line.StartsWith("const ") || line.StartsWith("var ") || line.StartsWith("for ") || line.StartsWith("if ") then
+                        line
+                    else
+                        sprintf "return %s" line
                 else
+                    let lastLine = lines.[lines.Length-1]
                     let init = lines.[..lines.Length-2] |> String.concat "\n  "
-                    sprintf "%s\n  return %s" init (lines.[lines.Length-1])
+                    if lastLine.StartsWith("let ") || lastLine.StartsWith("const ") || lastLine.StartsWith("var ") || lastLine.StartsWith("for ") || lastLine.StartsWith("if ") then
+                        // Last line is a statement — wrap entire block, eval returns last expression
+                        lines |> String.concat "\n  "
+                    else
+                        sprintf "%s\n  return %s" init lastLine
             let wrapped = sprintf "(function() {\n  %s\n})()" body
             let result = engine.Evaluate(wrapped)
             let native = result.ToObject()

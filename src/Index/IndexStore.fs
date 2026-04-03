@@ -126,12 +126,14 @@ module IndexStore =
     // ── Query functions ──
 
     let search (index: CodeIndex) (queryEmbedding: float32[]) (k: int) =
-        if index.SummaryEmbeddings.Length = 0 then [||]
+        if index.SummaryEmbeddings.Length = 0 || queryEmbedding.Length = 0 then [||]
         else
             index.SummaryEmbeddings
             |> Array.mapi (fun i emb ->
-                let sim = TensorPrimitives.CosineSimilarity(ReadOnlySpan(queryEmbedding), ReadOnlySpan(emb))
-                i, sim)
+                if emb.Length = 0 || emb.Length <> queryEmbedding.Length then i, -1f
+                else
+                    let sim = TensorPrimitives.CosineSimilarity(ReadOnlySpan(queryEmbedding), ReadOnlySpan(emb))
+                    i, sim)
             |> Array.sortByDescending snd
             |> Array.take (min k index.SummaryEmbeddings.Length)
 
@@ -140,9 +142,11 @@ module IndexStore =
         if embeddings.Length = 0 || chunkIdx >= embeddings.Length then [||]
         else
             let target = embeddings.[chunkIdx]
+            if target.Length = 0 then [||]
+            else
             embeddings
             |> Array.mapi (fun i emb ->
-                if i = chunkIdx then i, -1f
+                if i = chunkIdx || emb.Length = 0 || emb.Length <> target.Length then i, -1f
                 else i, TensorPrimitives.CosineSimilarity(ReadOnlySpan(target), ReadOnlySpan(emb)))
             |> Array.sortByDescending snd
             |> Array.take (min k embeddings.Length)
