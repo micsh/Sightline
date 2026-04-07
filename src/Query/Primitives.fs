@@ -202,11 +202,22 @@ module Primitives =
 
     // ── files ──
 
+    let private matchesPattern (pattern: string) (value: string) =
+        if String.IsNullOrEmpty(pattern) then true
+        elif pattern.Contains('*') || pattern.Contains('?') then
+            let escaped = Regex.Escape(pattern).Replace(@"\*", ".*").Replace(@"\?", ".")
+            Regex.IsMatch(value, sprintf "^%s$" escaped, RegexOptions.IgnoreCase)
+        else
+            value.Contains(pattern, StringComparison.OrdinalIgnoreCase)
+
     let files (index: CodeIndex) (pattern: string) =
+        let isGlob = not (String.IsNullOrEmpty pattern) && (pattern.Contains('*') || pattern.Contains('?'))
+        let matchPath = not (String.IsNullOrEmpty pattern) && not isGlob
         index.Chunks |> Array.groupBy (fun c -> c.FilePath)
         |> Array.choose (fun (filePath, chunks) ->
             let fileName = Path.GetFileName(filePath)
-            if String.IsNullOrEmpty(pattern) || fileName.Contains(pattern, StringComparison.OrdinalIgnoreCase) || filePath.Contains(pattern, StringComparison.OrdinalIgnoreCase) then
+            // Glob patterns match filename only; plain substrings also match full path
+            if matchesPattern pattern fileName || (matchPath && matchesPattern pattern filePath) then
                 let kinds = chunks |> Array.map (fun c -> c.Kind) |> Array.distinct |> Array.sort
                 let imps = IndexStore.fileImports index fileName
                 Some (mdict [ "file", box fileName; "path", box filePath; "chunks", box chunks.Length; "kinds", box (kinds |> String.concat ","); "imports", box imps.Length ])
