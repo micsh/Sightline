@@ -2,6 +2,39 @@
 
 Code intelligence tool for any codebase. Indexes source code using tree-sitter AST parsing, then provides 13 query primitives via CLI. Agents and developers can search semantically, trace references, analyze impact, and explore code structure — all without reading full files.
 
+## Prerequisites
+
+- **.NET 10 SDK** (preview) — [download](https://dotnet.microsoft.com/download/dotnet/10.0)
+- **Node.js** 18+ (for tree-sitter parsers)
+- **GitHub Copilot CLI** — required only for the `intel` command ([setup guide](https://docs.github.com/en/copilot/how-tos/copilot-sdk/set-up-copilot-sdk))
+- A local **embedding server** (see below)
+
+### Embedding server setup
+
+CodeSight uses vector embeddings for semantic search. Any OpenAI-compatible `/v1/embeddings` endpoint works. The recommended model is **nomic-embed-text-v1.5**.
+
+**Option A — llama-server (recommended):**
+
+Download the GGUF from [Hugging Face](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF), then:
+
+```bash
+llama-server -m nomic-embed-text-v1.5.Q8_0.gguf --port 1234 --embedding
+```
+
+**Option B — LM Studio:**
+
+Load `nomic-embed-text-v1.5` in LM Studio and start the server. Default endpoint: `http://localhost:1234/v1/embeddings`.
+
+**Option C — any other provider:**
+
+Set `embeddingUrl` in your repo's `code-intel.json`:
+
+```json
+{ "embeddingUrl": "http://your-server:port/v1/embeddings" }
+```
+
+The default URL is `http://localhost:1234/v1/embeddings`.
+
 ## Setup
 
 ```
@@ -205,3 +238,13 @@ code-sight.exe
   ├── parsers/           JS files: ts-chunker.js, chunker-core.js, languages/*
   └── playbooks/         Strategy guides: orient, plan, blast, explore, review
 ```
+
+## Notes
+
+- **All features except `intel` work without GitHub Copilot.** The `intel` command uses the [GitHub Copilot SDK](https://github.com/github/copilot-sdk) to dispatch questions to a scout model. If you don't have Copilot, you still get all 13 primitives, UDFs, the REPL, and composition helpers.
+- The embedding server must be running before `index` or `search` commands. Other commands (`modules`, `files`, `refs`, `grep`, `fn`) work offline against the cached index.
+- Index data is stored in `.code-intel/` at the repo root (gitignored by default).
+
+## License
+
+MIT

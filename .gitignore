@@ -4,3 +4,5 @@ obj/
 *.user
 .vs/
 parsers/node_modules/
+experiments/
+.project-memory/
