@@ -9,8 +9,8 @@ let printUsage () =
     printfn "  code-sight index [--repo <path>]                     Build/update index"
     printfn "  code-sight index --files <f1> <f2> ... [--repo <path>] Re-index specific files"
     printfn "  code-sight modules [--repo <path>]                   Show project map"
-    printfn "  code-sight search <js> [--repo <path>] [--scope <s>] Run a query"
-    printfn "  code-sight eval <js> [--repo <path>]                 Alias for search"
+    printfn "  code-sight search <js> [--json] [--repo <path>] [--scope <s>] Run a query"
+    printfn "  code-sight eval <js> [--json] [--repo <path>]                 Alias for search"
     printfn "  code-sight intel <question> [--repo <path>]          Ask about the codebase"
     printfn "  code-sight repl [--repo <path>] [--scope <s>]        Interactive mode"
     printfn "  code-sight scopes [--repo <path>]                    List available scopes"
@@ -136,6 +136,12 @@ let parseArgs (args: string[]) =
             command <- "search"
             query <- args.[i + 1]
             i <- i + 2
+            while i < args.Length do
+                match args.[i] with
+                | "--json" -> jsonOut <- true; i <- i + 1
+                | "--repo" when i + 1 < args.Length -> repo <- args.[i + 1]; i <- i + 2
+                | "--scope" when i + 1 < args.Length -> scope <- args.[i + 1]; i <- i + 2
+                | _ -> i <- i + 1
         | "search" | "eval" ->
             command <- "search"
             i <- i + 1
@@ -563,7 +569,10 @@ let main args =
                     1
                 else
                     ensureChunks query
-                    printfn "%s" (QueryEngine.eval engine query)
+                    let result =
+                        if jsonOut then QueryEngine.evalJson engine query
+                        else QueryEngine.eval engine query
+                    printfn "%s" result
                     0
             | "repl" ->
                 eprintfn "code-sight REPL. Type JS queries, 'quit' to exit."
