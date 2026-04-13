@@ -5,7 +5,7 @@ Code intelligence tool for any codebase. Indexes source code using tree-sitter A
 ## Prerequisites
 
 - **.NET 10 SDK** (preview) — [download](https://dotnet.microsoft.com/download/dotnet/10.0)
-- **Node.js** 18+ (for tree-sitter parsers)
+- **Node.js** 18+ (for tree-sitter WASM parsers at runtime)
 - **GitHub Copilot CLI** — required only for the `intel` command ([setup guide](https://docs.github.com/en/copilot/how-tos/copilot-sdk/set-up-copilot-sdk))
 - A local **embedding server** (see below)
 
@@ -52,9 +52,7 @@ dotnet publish -c Release -r linux-x64  # Linux
 dotnet publish -c Release -r osx-arm64  # macOS Apple Silicon
 ```
 
-The output is a single `code-sight` executable with all dependencies bundled (parsers and playbooks included). Only **Node.js** is required at runtime (tree-sitter runs as a child process).
-
-F# support requires `tree-sitter-fsharp` — copy it into `parsers/node_modules/` from a local build or the AITeam.Platform repo.
+The output is a single `code-sight` executable with all dependencies bundled. **Node.js** is the only runtime dependency (tree-sitter WASM parsers run as a child process). No `npm install` needed — all parser packages and WASM grammars are included in the binary.
 
 ## Usage
 
