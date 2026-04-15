@@ -452,10 +452,17 @@ module Primitives =
         let fanOutMap =
             index.Imports |> Array.groupBy fst
             |> Array.map (fun (f, imps) -> Path.GetFileName(f), imps.Length) |> dict
-        // Compute fanIn per file (how many files import this file's module)
-        let fanInMap =
-            index.Imports |> Array.groupBy snd
-            |> Array.map (fun (m, importers) -> m, importers.Length) |> dict
+        // Compute fanIn per file (how many other files import this file)
+        // Resolve imported module names to file names via stem matching (same as trace)
+        let allFiles = index.Chunks |> Array.map (fun c -> Path.GetFileName c.FilePath) |> Array.distinct
+        let fileStems = allFiles |> Array.map (fun f -> f, Path.GetFileNameWithoutExtension(f).ToLowerInvariant()) |> dict
+        let fanInMap = Dictionary<string, int>()
+        for (filePath, importedModule) in index.Imports do
+            let mLower = importedModule.ToLowerInvariant()
+            let src = Path.GetFileName filePath
+            for kv in fileStems do
+                if kv.Key <> src && mLower.Contains(kv.Value) && kv.Value.Length >= 3 then
+                    fanInMap.[kv.Key] <- (match fanInMap.TryGetValue(kv.Key) with true, v -> v + 1 | _ -> 0) + 1
         // Group chunks by file
         index.Chunks |> Array.groupBy (fun c -> c.FilePath)
         |> Array.choose (fun (filePath, chunks) ->
@@ -466,7 +473,7 @@ module Primitives =
                 let kinds = chunks |> Array.map (fun c -> c.Kind) |> Array.distinct |> Array.sort
                 let moduleName = chunks.[0].Module
                 let fanOut = match fanOutMap.TryGetValue(fileName) with true, v -> v | _ -> 0
-                let fanIn = match fanInMap.TryGetValue(moduleName) with true, v -> v | _ -> 0
+                let fanIn = match fanInMap.TryGetValue(fileName) with true, v -> v | _ -> 0
                 Some (mdict [
                     "file", box fileName; "path", box filePath; "chunks", box chunks.Length
                     "loc", box loc; "fanIn", box fanIn; "fanOut", box fanOut
