@@ -43,7 +43,9 @@ let printUsage () =
     printfn "  imports(file)                        Show what a file imports"
     printfn "  deps(pattern)                        Show dependency graph for a module"
     printfn "  refs(name, {limit})                  Find all references to a symbol"
+    printfn "  callers(name, {limit})               Find call sites of a qualified name"
     printfn "  walk(name, {depth, limit})           Walk the dependency graph from a symbol"
+    printfn "  changed(gitRef)                      Chunks in files changed since a git ref"
     printfn ""
     printfn "Composition helpers:"
     printfn "  pipe(value, fn1, fn2, ...)           Thread value through functions"
@@ -560,7 +562,7 @@ let main args =
             // For modules/files/context/impact/imports/deps — no chunks needed
             // Pass None initially; primitives that need chunks will force the lazy
             let mutable engine = QueryEngine.create index None cfg.EmbeddingUrl cfg.IndexDir cfg.RepoRoot cfg.SrcDirs
-            let needsChunks = [| "expand"; "grep"; "refs"; "neighborhood"; "similar"; "walk" |]
+            let needsChunks = [| "expand"; "grep"; "refs"; "neighborhood"; "similar"; "walk"; "callers" |]
             let ensureChunks (js: string) =
                 if needsChunks |> Array.exists (fun p -> js.Contains(p)) then
                     if not chunksRef.IsValueCreated then

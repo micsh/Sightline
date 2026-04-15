@@ -68,11 +68,17 @@ module Primitives =
     /// Normalize path separators for cross-platform comparison.
     let private normPath (p: string) = p.Replace('\\', '/')
 
-    /// Find source chunk matching an index entry. Used by expand/grep/refs/neighborhood.
+    /// Find source chunk matching an index entry. Uses stable chunk ID as primary key.
     let private findSource (chunks: CodeChunk[] option) (c: ChunkEntry) =
         chunks |> Option.bind (fun chs ->
-            chs |> Array.tryFind (fun ch ->
-                normPath ch.FilePath = normPath c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine))
+            let targetCid = IndexStore.chunkId c.FilePath c.Name c.StartLine
+            // Primary: match by stable chunk ID
+            match chs |> Array.tryFind (fun ch -> IndexStore.chunkId ch.FilePath ch.Name ch.StartLine = targetCid) with
+            | Some _ as hit -> hit
+            | None ->
+                // Fallback: normalized path + name + line (handles pre-CID caches)
+                chs |> Array.tryFind (fun ch ->
+                    normPath ch.FilePath = normPath c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine))
 
     // ── search ──
 
@@ -326,3 +332,83 @@ module Primitives =
 
             traceHop startName 1 [startName]
             results.ToArray()
+
+    // ── callers ──
+
+    /// callers(qualifiedName, {limit}) — find call sites of a qualified name like "Parser.parseAll".
+    /// Unlike refs() which matches bare tokens, callers() searches for the full qualified pattern
+    /// and also matches unqualified uses within the defining module.
+    let callers (index: CodeIndex) (session: QuerySession) (chunks: CodeChunk[] option) (qualifiedName: string) (limit: int) =
+        match chunks with
+        | None -> [| mdict [ "error", box "source chunks not loaded — run 'code-sight index' first" ] |]
+        | Some allChunks ->
+            let parts = qualifiedName.Split('.')
+            let shortName = parts |> Array.last
+            let moduleName = if parts.Length > 1 then parts.[0..parts.Length-2] |> String.concat "." else ""
+            let qualifiedRegex = Regex(sprintf @"\b%s\b" (Regex.Escape qualifiedName), RegexOptions.Compiled)
+            let bareRegex = Regex(sprintf @"\b%s\b" (Regex.Escape shortName), RegexOptions.Compiled)
+            let results = ResizeArray()
+            for i in 0..index.Chunks.Length-1 do
+                if results.Count < limit then
+                    let c = index.Chunks.[i]
+                    if c.Name = shortName || c.Name = qualifiedName then ()
+                    else
+                        match findSource (Some allChunks) c with
+                        | Some ch ->
+                            let isQualified = qualifiedRegex.IsMatch(ch.Content)
+                            let isBareInModule = moduleName <> "" && c.Module = moduleName && bareRegex.IsMatch(ch.Content)
+                            if isQualified || isBareInModule then
+                                let matchLines =
+                                    ch.Content.Split('\n')
+                                    |> Array.filter (fun l -> qualifiedRegex.IsMatch(l) || (isBareInModule && bareRegex.IsMatch(l)))
+                                    |> Array.map (fun l -> l.Trim())
+                                    |> Array.truncate 3
+                                let id = session.NextRef(i)
+                                let callType = if isQualified then "qualified" else "local"
+                                let d = mdict [
+                                    "id", box id; "kind", box c.Kind; "name", box c.Name
+                                    "file", box (Path.GetFileName c.FilePath); "path", box c.FilePath
+                                    "line", box c.StartLine; "callType", box callType
+                                    "matchLine", box (matchLines |> String.concat " | ")
+                                    "signature", box c.Signature; "summary", box c.Summary ]
+                                for kv in c.Extra do d.[kv.Key] <- box kv.Value
+                                results.Add(d)
+                        | None -> ()
+            results.ToArray()
+
+    // ── changed ──
+
+    /// changed(gitRef) — find chunks in files that changed since a git ref (branch, tag, or SHA).
+    let changed (index: CodeIndex) (session: QuerySession) (repoRoot: string) (gitRef: string) =
+        try
+            let psi = System.Diagnostics.ProcessStartInfo("git", sprintf "diff --name-only %s" gitRef)
+            psi.WorkingDirectory <- repoRoot
+            psi.RedirectStandardOutput <- true
+            psi.RedirectStandardError <- true
+            psi.UseShellExecute <- false
+            psi.CreateNoWindow <- true
+            use proc = System.Diagnostics.Process.Start(psi)
+            let output = proc.StandardOutput.ReadToEnd()
+            proc.WaitForExit()
+            if proc.ExitCode <> 0 then
+                [| mdict [ "error", box (sprintf "git diff failed for ref '%s'" gitRef) ] |]
+            else
+                let changedFiles =
+                    output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    |> Array.map (fun f -> f.Trim().Replace('\\', '/'))
+                    |> Set.ofArray
+                let results = ResizeArray()
+                for i in 0..index.Chunks.Length-1 do
+                    let c = index.Chunks.[i]
+                    let normFile = c.FilePath.Replace('\\', '/')
+                    if changedFiles.Contains(normFile) then
+                        let id = session.NextRef(i)
+                        let d = mdict [
+                            "id", box id; "kind", box c.Kind; "name", box c.Name
+                            "file", box (Path.GetFileName c.FilePath); "path", box c.FilePath
+                            "line", box c.StartLine; "signature", box c.Signature; "summary", box c.Summary ]
+                        for kv in c.Extra do d.[kv.Key] <- box kv.Value
+                        results.Add(d)
+                results.ToArray()
+        with ex ->
+            [| mdict [ "error", box (sprintf "git not available: %s" ex.Message) ] |]

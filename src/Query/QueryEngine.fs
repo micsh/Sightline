@@ -108,6 +108,15 @@ module QueryEngine =
             let limit = jsInt opts "limit" 5
             box (stamp "walk" (Primitives.walk index session chunks name depth limit)))) |> ignore
 
+        // callers
+        engine.SetValue("callers", Func<string, obj, obj>(fun name opts ->
+            let limit = jsInt opts "limit" 20
+            box (stamp "callers" (Primitives.callers index session chunks name limit)))) |> ignore
+
+        // changed
+        engine.SetValue("changed", Func<string, obj>(fun gitRef ->
+            box (stamp "changed" (Primitives.changed index session repoRoot gitRef)))) |> ignore
+
         // Composition helpers
         engine.SetValue("print", Action<obj>(fun v ->
             eprintfn "%s" (Format.formatValue v))) |> ignore
