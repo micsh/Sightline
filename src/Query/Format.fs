@@ -147,9 +147,11 @@ module Format =
                 let score = fmtScore d
                 let summary = match d.TryGetValue("summary") with true, v -> string v | _ -> ""
                 let sigStr = match d.TryGetValue("signature") with true, v when string v <> "" -> sprintf "\n       %s" (string v) | _ -> ""
+                let code = match d.TryGetValue("code") with true, v when string v <> "" && string v <> "(source not loaded)" -> string v | _ -> ""
                 let matchLine = match d.TryGetValue("matchLine") with true, v when string v <> "" -> sprintf "\n       ▸ %s" (string v) | _ -> ""
                 let preview = match d.TryGetValue("preview") with true, v when string v <> "" -> sprintf "\n       ▸ %s" (string v) | _ -> ""
-                if id <> "" then sprintf "[%s] %s%s:%s (%s:%s)%s\n       %s%s%s" id score kind name file line sigStr summary matchLine preview
+                if id <> "" && code <> "" then sprintf "[%s] %s:%s (%s:%s)%s\n```\n%s\n```" id kind name file line sigStr code
+                elif id <> "" then sprintf "[%s] %s%s:%s (%s:%s)%s\n       %s%s%s" id score kind name file line sigStr summary matchLine preview
                 else
                     d |> Seq.filter (fun kv -> kv.Key <> sourceKey)
                     |> Seq.map (fun kv -> sprintf "%s: %s" kv.Key (formatValue kv.Value))

@@ -10,6 +10,34 @@ module QueryEngine =
 
     let private sourceKey = "__cs_source__"
 
+    /// Extract a string property from a JS options object, handling JsObject / ObjectInstance / JsValue.
+    let private jsStr (opts: obj) (key: string) (def: string) =
+        match opts with
+        | :? Jint.Native.JsValue as v when v.IsObject() ->
+            let o = v.AsObject()
+            let prop = o.Get(key)
+            if prop.IsUndefined() || prop.IsNull() then def else prop.AsString()
+        | :? System.Dynamic.ExpandoObject as eo ->
+            let dict = eo :> IDictionary<string, obj>
+            match dict.TryGetValue(key) with
+            | true, v when not (isNull v) -> string v
+            | _ -> def
+        | _ -> def
+
+    /// Extract an int property from a JS options object.
+    let private jsInt (opts: obj) (key: string) (def: int) =
+        match opts with
+        | :? Jint.Native.JsValue as v when v.IsObject() ->
+            let o = v.AsObject()
+            let prop = o.Get(key)
+            if prop.IsUndefined() || prop.IsNull() then def else int (prop.AsNumber())
+        | :? System.Dynamic.ExpandoObject as eo ->
+            let dict = eo :> IDictionary<string, obj>
+            match dict.TryGetValue(key) with
+            | true, v when not (isNull v) -> int (System.Convert.ToDouble(v))
+            | _ -> def
+        | _ -> def
+
     let private stamp (source: string) (results: Dictionary<string, obj>[]) =
         for d in results do d.[sourceKey] <- box source
         results
@@ -25,14 +53,9 @@ module QueryEngine =
 
         // search
         engine.SetValue("search", Func<string, obj, obj>(fun query opts ->
-            let limit, kind, file =
-                match opts with
-                | :? Jint.Native.JsObject as o ->
-                    let l = match o.Get("limit") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 5
-                    let k = match o.Get("kind") with v when not (v.IsUndefined()) && not (v.IsNull()) -> v.AsString() | _ -> ""
-                    let f = match o.Get("file") with v when not (v.IsUndefined()) && not (v.IsNull()) -> v.AsString() | _ -> ""
-                    l, k, f
-                | _ -> 5, "", ""
+            let limit = jsInt opts "limit" 5
+            let kind = jsStr opts "kind" ""
+            let file = jsStr opts "file" ""
             box (stamp "search" (Primitives.search index session chunks embeddingUrl query limit kind file)))) |> ignore
 
         // context
@@ -52,34 +75,20 @@ module QueryEngine =
 
         // neighborhood
         engine.SetValue("neighborhood", Func<string, obj, obj>(fun id opts ->
-            let before, after =
-                match opts with
-                | :? Jint.Native.JsObject as o ->
-                    let b = match o.Get("before") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 3
-                    let a = match o.Get("after") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 3
-                    b, a
-                | _ -> 3, 3
+            let before = jsInt opts "before" 3
+            let after = jsInt opts "after" 3
             box (stamp1 "neighborhood" (Primitives.neighborhood index session chunks id before after)))) |> ignore
 
         // similar
         engine.SetValue("similar", Func<string, obj, obj>(fun id opts ->
-            let limit =
-                match opts with
-                | :? Jint.Native.JsObject as o ->
-                    match o.Get("limit") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 5
-                | _ -> 5
+            let limit = jsInt opts "limit" 5
             box (stamp "similar" (Primitives.similar index session id limit)))) |> ignore
 
         // grep
         engine.SetValue("grep", Func<string, obj, obj>(fun pattern opts ->
-            let limit, kind, file =
-                match opts with
-                | :? Jint.Native.JsObject as o ->
-                    let l = match o.Get("limit") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 10
-                    let k = match o.Get("kind") with v when not (v.IsUndefined()) && not (v.IsNull()) -> v.AsString() | _ -> ""
-                    let f = match o.Get("file") with v when not (v.IsUndefined()) && not (v.IsNull()) -> v.AsString() | _ -> ""
-                    l, k, f
-                | _ -> 10, "", ""
+            let limit = jsInt opts "limit" 10
+            let kind = jsStr opts "kind" ""
+            let file = jsStr opts "file" ""
             box (stamp "grep" (Primitives.grep index session chunks pattern limit kind file)))) |> ignore
 
         // files
@@ -90,22 +99,13 @@ module QueryEngine =
 
         // refs
         engine.SetValue("refs", Func<string, obj, obj>(fun name opts ->
-            let limit =
-                match opts with
-                | :? Jint.Native.JsObject as o ->
-                    match o.Get("limit") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 20
-                | _ -> 20
+            let limit = jsInt opts "limit" 20
             box (stamp "refs" (Primitives.refs index session chunks name limit)))) |> ignore
 
         // walk
         engine.SetValue("walk", Func<string, obj, obj>(fun name opts ->
-            let depth, limit =
-                match opts with
-                | :? Jint.Native.JsObject as o ->
-                    let d = match o.Get("depth") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 2
-                    let l = match o.Get("limit") with v when not (v.IsUndefined()) -> int (v.AsNumber()) | _ -> 5
-                    d, l
-                | _ -> 2, 5
+            let depth = jsInt opts "depth" 2
+            let limit = jsInt opts "limit" 5
             box (stamp "walk" (Primitives.walk index session chunks name depth limit)))) |> ignore
 
         // Composition helpers

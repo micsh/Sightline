@@ -185,7 +185,7 @@ module IndexStore =
             |> Array.take (min k embeddings.Length)
 
     /// Normalize file input: agents may pass full path, relative path, or just filename.
-    let private matchFile (filePath: string) (input: string) =
+    let matchFile (filePath: string) (input: string) =
         let inputLower = input.Replace("\\", "/").ToLowerInvariant()
         let pathLower = filePath.Replace("\\", "/").ToLowerInvariant()
         let fileNameLower = Path.GetFileName(filePath).ToLowerInvariant()

@@ -65,11 +65,14 @@ module Primitives =
         |> Option.map (fun l -> l.Trim())
         |> Option.defaultValue ""
 
+    /// Normalize path separators for cross-platform comparison.
+    let private normPath (p: string) = p.Replace('\\', '/')
+
     /// Find source chunk matching an index entry. Used by expand/grep/refs/neighborhood.
     let private findSource (chunks: CodeChunk[] option) (c: ChunkEntry) =
         chunks |> Option.bind (fun chs ->
             chs |> Array.tryFind (fun ch ->
-                ch.FilePath = c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine))
+                normPath ch.FilePath = normPath c.FilePath && ch.Name = c.Name && ch.StartLine = c.StartLine))
 
     // ── search ──
 
@@ -95,6 +98,15 @@ module Primitives =
     // ── context ──
 
     let context (index: CodeIndex) (session: QuerySession) (fileName: string) =
+        // Detect ambiguous filename matches
+        let matchingFiles =
+            index.Chunks |> Array.map (fun c -> c.FilePath)
+            |> Array.distinct
+            |> Array.filter (fun fp -> IndexStore.matchFile fp fileName)
+        if matchingFiles.Length > 1 then
+            let listing = matchingFiles |> Array.map (fun f -> sprintf "  %s" f) |> String.concat "\n"
+            mdict [ "error", box (sprintf "'%s' is ambiguous (%d matches):\n%s\nUse a more specific path, e.g. context('%s')" fileName matchingFiles.Length listing matchingFiles.[0]) ]
+        else
         let chunks = IndexStore.fileContextByName index fileName
         let imps = IndexStore.fileImports index fileName
         let baseName = Path.GetFileNameWithoutExtension(fileName).ToLowerInvariant()
