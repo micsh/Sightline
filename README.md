@@ -14,19 +14,19 @@ Both tools share the same query engine pattern: index once, query with composabl
 **CodeSight:**
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/micsh/Sight/main/install-code-sight.sh | bash
+curl -fsSL https://raw.githubusercontent.com/micsh/Sightline/main/install-code-sight.sh | bash
 
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/micsh/Sight/main/install-code-sight.ps1 | iex
+irm https://raw.githubusercontent.com/micsh/Sightline/main/install-code-sight.ps1 | iex
 ```
 
 **KnowledgeSight:**
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/micsh/Sight/main/install-knowledge-sight.sh | bash
+curl -fsSL https://raw.githubusercontent.com/micsh/Sightline/main/install-knowledge-sight.sh | bash
 
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/micsh/Sight/main/install-knowledge-sight.ps1 | iex
+irm https://raw.githubusercontent.com/micsh/Sightline/main/install-knowledge-sight.ps1 | iex
 ```
 
 Or build from source:

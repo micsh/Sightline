@@ -6,15 +6,15 @@ Code intelligence tool for any codebase. Indexes source code using tree-sitter A
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/micsh/Sight/main/install-code-sight.sh | bash
+curl -fsSL https://raw.githubusercontent.com/micsh/Sightline/main/install-code-sight.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/micsh/Sight/main/install-code-sight.ps1 | iex
+irm https://raw.githubusercontent.com/micsh/Sightline/main/install-code-sight.ps1 | iex
 ```
 
-Or download binaries directly from [Releases](https://github.com/micsh/Sight/releases).
+Or download binaries directly from [Releases](https://github.com/micsh/Sightline/releases).
 
 ## Prerequisites
 
@@ -291,7 +291,7 @@ code-sight.exe
 
 ## Source
 
-[github.com/micsh/Sight](https://github.com/micsh/Sight/tree/main/src/CodeSight)
+[github.com/micsh/Sightline](https://github.com/micsh/Sightline/tree/main/src/CodeSight)
 
 ## License
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Install code-sight — downloads the latest release binary and adds it to PATH.
-# Usage: curl -fsSL https://raw.githubusercontent.com/micsh/Sight/main/install-code-sight.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/micsh/Sightline/main/install-code-sight.sh | bash
 
 set -euo pipefail
 
-REPO="micsh/Sight"
+REPO="micsh/Sightline"
 TOOL="code-sight"
 INSTALL_DIR="$HOME/.code-sight"
 

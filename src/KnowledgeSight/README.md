@@ -6,15 +6,15 @@ Knowledge and documentation intelligence for any repo. Index your markdown docs,
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/micsh/Sight/main/install-knowledge-sight.sh | bash
+curl -fsSL https://raw.githubusercontent.com/micsh/Sightline/main/install-knowledge-sight.sh | bash
 ```
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/micsh/Sight/main/install-knowledge-sight.ps1 | iex
+irm https://raw.githubusercontent.com/micsh/Sightline/main/install-knowledge-sight.ps1 | iex
 ```
 
-Or download binaries directly from [Releases](https://github.com/micsh/Sight/releases).
+Or download binaries directly from [Releases](https://github.com/micsh/Sightline/releases).
 
 ## Quick Start
 
@@ -262,4 +262,4 @@ related:
 
 ## Source
 
-[github.com/micsh/Sight](https://github.com/micsh/Sight/tree/main/src/KnowledgeSight)
+[github.com/micsh/Sightline](https://github.com/micsh/Sightline/tree/main/src/KnowledgeSight)
