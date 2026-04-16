@@ -25,21 +25,10 @@ jobs:
         node-version: '20'
 
     - name: Install parsers
-      run: cd parsers && npm install --legacy-peer-deps
+      run: cd src/CodeSight/parsers && npm install --legacy-peer-deps
 
     - name: Restore
-      run: dotnet restore
+      run: dotnet restore AITeam.Sight.slnx
 
     - name: Build
-      run: dotnet build --no-restore -c Release
-
-    - name: Publish
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      run: dotnet publish -c Release -r linux-x64 -o publish
-
-    - name: Upload artifact
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      uses: actions/upload-artifact@v4
-      with:
-        name: code-sight-linux-x64
-        path: publish/
+      run: dotnet build AITeam.Sight.slnx --no-restore -c Release

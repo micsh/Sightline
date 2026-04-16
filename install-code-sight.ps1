@@ -1,9 +1,9 @@
 # Install code-sight — downloads the latest release binary and adds it to PATH.
-# Usage: irm https://raw.githubusercontent.com/micsh/CodeSight/main/install.ps1 | iex
+# Usage: irm https://raw.githubusercontent.com/micsh/Sight/main/install-code-sight.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "micsh/CodeSight"
+$Repo = "micsh/Sight"
 $Tool = "code-sight"
 $Rid = "win-x64"
 $InstallDir = "$HOME\.code-sight"

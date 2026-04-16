@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     strategy:
       matrix:
         include:
@@ -36,22 +36,46 @@ jobs:
         node-version: '20'
 
     - name: Install parsers
-      run: cd parsers && npm install --legacy-peer-deps
+      run: cd src/CodeSight/parsers && npm install --legacy-peer-deps
 
-    - name: Publish
-      run: dotnet publish -c Release -r ${{ matrix.rid }} -o publish
+    - name: Publish CodeSight
+      run: dotnet publish src/CodeSight/AITeam.CodeSight.fsproj -c Release -r ${{ matrix.rid }} -o publish-cs
+
+    - name: Publish KnowledgeSight
+      run: dotnet publish src/KnowledgeSight/AITeam.KnowledgeSight.fsproj -c Release -r ${{ matrix.rid }} -o publish-ks
 
     - name: Archive (Linux/macOS)
       if: runner.os != 'Windows'
-      run: tar -czf code-sight-${{ matrix.rid }}.tar.gz -C publish .
+      run: |
+        tar -czf code-sight-${{ matrix.rid }}.tar.gz -C publish-cs .
+        tar -czf knowledge-sight-${{ matrix.rid }}.tar.gz -C publish-ks .
 
     - name: Archive (Windows)
       if: runner.os == 'Windows'
-      run: Compress-Archive -Path publish\* -DestinationPath code-sight-${{ matrix.rid }}.zip
+      run: |
+        Compress-Archive -Path publish-cs\* -DestinationPath code-sight-${{ matrix.rid }}.zip
+        Compress-Archive -Path publish-ks\* -DestinationPath knowledge-sight-${{ matrix.rid }}.zip
 
-    - name: Upload to Release
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-${{ matrix.rid }}
+        path: |
+          code-sight-*
+          knowledge-sight-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
+
+    - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: |
-          code-sight-*.tar.gz
-          code-sight-*.zip
+        files: artifacts/*
