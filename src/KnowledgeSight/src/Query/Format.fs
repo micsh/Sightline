@@ -19,6 +19,13 @@ module Format =
     let private getSource (d: IDictionary<string, obj>) =
         match d.TryGetValue(sourceKey) with true, v -> string v | _ -> ""
 
+    let private asStrings (value: obj) =
+        match value with
+        | :? (string[]) as arr -> arr
+        | :? (obj[]) as arr -> arr |> Array.map string
+        | null -> [||]
+        | other -> [| string other |]
+
     /// Format a single dict item, using source annotation when available.
     let rec private formatItem (d: IDictionary<string, obj>) =
         match d.TryGetValue("error") with
@@ -62,6 +69,53 @@ module Format =
             let folder = match d.TryGetValue("suggestedFolder") with true, v -> string v | _ -> ""
             let docs = match d.TryGetValue("docs") with true, v -> string v | _ -> ""
             sprintf "%s  (%s)" folder docs
+        | "hygiene" ->
+            let findingType = match d.TryGetValue("finding_type") with true, v -> string v | _ -> "hygiene"
+            let action = match d.TryGetValue("suggested_action") with true, v -> string v | _ -> "review"
+            let actionShape = match d.TryGetValue("expected_human_action_shape") with true, v -> string v | _ -> "review"
+            let role = match d.TryGetValue("doc_role") with true, v -> string v | _ -> "unknown"
+            let confidence =
+                match d.TryGetValue("confidence") with
+                | true, v ->
+                    try sprintf "%.2f" (System.Convert.ToDouble(v))
+                    with _ -> "?"
+                | _ -> "?"
+            let risk = match d.TryGetValue("risk") with true, v -> string v | _ -> "?"
+            let files =
+                match d.TryGetValue("files") with
+                | true, v -> asStrings v
+                | _ -> [||]
+            let sections =
+                match d.TryGetValue("sections") with
+                | true, v -> asStrings v
+                | _ -> [||]
+            let owner =
+                match d.TryGetValue("canonical_owner_candidate") with
+                | true, v when string v <> "" -> sprintf " owner=%s" (string v)
+                | _ -> ""
+            let nearest =
+                match d.TryGetValue("nearest_owner_or_cluster") with
+                | true, v when string v <> "" -> sprintf "\n       near: %s" (string v)
+                | _ -> ""
+            let whyFlagged = match d.TryGetValue("why_flagged") with true, v -> string v | _ -> ""
+            let evidence =
+                match d.TryGetValue("evidence") with
+                | true, v -> asStrings v |> Array.truncate 2 |> String.concat " | "
+                | _ -> ""
+            let target =
+                let fileText =
+                    match d.TryGetValue("source_file") with
+                    | true, v when string v <> "" -> string v
+                    | _ when files.Length > 0 -> files.[0]
+                    | _ -> "(no file)"
+                let sectionText =
+                    match d.TryGetValue("source_section") with
+                    | true, v when string v <> "" -> sprintf " :: %s" (string v)
+                    | _ when sections.Length > 0 -> sprintf " :: %s" sections.[0]
+                    | _ -> ""
+                fileText + sectionText
+            sprintf "[%s/%s] %s — %s (role=%s, conf=%s, risk=%s%s)\n       %s%s\n       evidence: %s"
+                action actionShape findingType target role confidence risk owner whyFlagged nearest evidence
         | _ ->
             // Fallback: use shape-based detection
             let id = match d.TryGetValue("id") with true, v -> string v | _ -> ""

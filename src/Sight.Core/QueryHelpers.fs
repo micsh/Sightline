@@ -41,11 +41,17 @@ module QueryHelpers =
 
     /// Load and register user-defined functions on a Jint engine.
     let registerUserFunctions (engine: Engine) (config: FunctionStoreConfig) (repoRoot: string) =
-        let userFns = FunctionStore.load config repoRoot
-        let fnDecls = FunctionStore.toJsDeclarations userFns
-        for decl in fnDecls do
-            try engine.Execute(decl) |> ignore
-            with ex -> eprintfn "Warning: failed to load function: %s" ex.Message
+        match FunctionStore.load config repoRoot with
+        | Error msg ->
+            eprintfn "Warning: %s" msg
+        | Ok userFns ->
+            for fn in userFns do
+                match FunctionJsAdapter.tryRenderDeclaration fn with
+                | Error msg ->
+                    eprintfn "Warning: %s" msg
+                | Ok decl ->
+                    try engine.Execute(decl) |> ignore
+                    with ex -> eprintfn "Warning: failed to load function '%s': %s" fn.Name ex.Message
 
     /// Rewrite bare R123 tokens to 'R123' string literals (outside of quotes).
     let rewriteRefIds (js: string) =

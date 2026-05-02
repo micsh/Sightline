@@ -49,7 +49,7 @@ module QueryEngine =
         result
 
     /// Create a Jint engine with all primitives wired.
-    let create (index: CodeIndex) (chunks: CodeChunk[] option) (embeddingUrl: string) (indexDir: string) (repoRoot: string) (srcDirs: string[]) (peerPath: string option) =
+    let create (index: CodeIndex) (chunks: CodeChunk[] option) (embeddingUrl: string) (embeddingTimeoutSeconds: int) (indexDir: string) (repoRoot: string) (srcDirs: string[]) (peerPath: string option) =
         let session = QuerySession(indexDir)
         let engine = Engine()
 
@@ -58,7 +58,7 @@ module QueryEngine =
             let limit = jsInt opts "limit" 5
             let kind = jsStr opts "kind" ""
             let file = jsStr opts "file" ""
-            box (stamp "search" (Primitives.search index session chunks embeddingUrl query limit kind file)))) |> ignore
+            box (stamp "search" (Primitives.search index session chunks embeddingUrl embeddingTimeoutSeconds query limit kind file)))) |> ignore
 
         // context
         engine.SetValue("context", Func<string, obj>(fun f -> box (stamp1 "context" (Primitives.context index session f)))) |> ignore

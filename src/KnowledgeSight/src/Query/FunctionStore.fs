@@ -11,7 +11,7 @@ module FunctionStore =
         ReservedNames = FunctionStore.jsReservedNames + set [
             "catalog"; "search"; "context"; "expand"; "neighborhood"; "similar"
             "grep"; "mentions"; "files"; "backlinks"; "links"; "orphans"; "broken"
-            "placement"; "walk"; "novelty"; "cluster"; "gaps"
+            "placement"; "walk"; "novelty"; "cluster"; "gaps"; "hygiene"
             "changed"; "explain"
         ]
     }
@@ -22,4 +22,3 @@ module FunctionStore =
     let save = FunctionStore.save config
     let add = FunctionStore.add config
     let remove = FunctionStore.remove config
-    let toJsDeclarations = FunctionStore.toJsDeclarations

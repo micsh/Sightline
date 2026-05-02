@@ -29,6 +29,7 @@ module Config =
         else [| "." |]
 
     let load (repoRoot: string) =
+        let repoRoot = Path.GetFullPath(repoRoot)
         let configPath = Path.Combine(repoRoot, "knowledge-sight.json")
         let indexDir = Path.Combine(repoRoot, ".knowledge-sight")
 

@@ -64,6 +64,7 @@ let printUsage () =
     printfn "  novelty(text, {threshold})           Detect novel knowledge in text"
     printfn "  cluster(dir, {threshold})            Cluster docs by similarity"
     printfn "  gaps({scope, min_docs, signal})      Find coverage gaps"
+    printfn "  hygiene()                            Experimental role-aware hygiene/orphan/gap report"
     printfn ""
     printfn "Composition helpers:"
     printfn "  pipe(value, fn1, fn2, ...)           Thread value through functions"
@@ -196,33 +197,37 @@ let main args =
             | Error msg -> eprintfn "Error: %s" msg; 1
 
     | "fn-list" ->
-        let fns = FunctionStore.load repo
-        if fns.Length = 0 then
-            if jsonOut then printfn "[]"
-            else printfn "No functions defined. Use 'knowledge-sight fn add <name> <body>' to create one."
-        elif jsonOut then
-            let options = System.Text.Json.JsonSerializerOptions(WriteIndented = true)
-            let arr = fns |> Array.map (fun f ->
-                dict [ "name", box f.Name; "params", box f.Params; "body", box f.Body; "description", box f.Description ])
-            printfn "%s" (System.Text.Json.JsonSerializer.Serialize(arr, options))
-        elif verbose then
-            printfn "%d function(s) in %s:" fns.Length repo
-            printfn ""
-            for f in fns do
-                let joined = f.Params |> String.concat ", "
-                let ps = if f.Params.Length = 0 then "()" else sprintf "(%s)" joined
-                printfn "  %s%s" f.Name ps
-                if f.Description <> "" then printfn "    %s" f.Description
-                printfn "    body: %s" f.Body
+        match FunctionStore.load repo with
+        | Error msg ->
+            eprintfn "Error: %s" msg
+            1
+        | Ok fns ->
+            if fns.Length = 0 then
+                if jsonOut then printfn "[]"
+                else printfn "No functions defined. Use 'knowledge-sight fn add <name> <body>' to create one."
+            elif jsonOut then
+                let options = System.Text.Json.JsonSerializerOptions(WriteIndented = true)
+                let arr = fns |> Array.map (fun f ->
+                    dict [ "name", box f.Name; "params", box f.Params; "body", box f.Body; "description", box f.Description ])
+                printfn "%s" (System.Text.Json.JsonSerializer.Serialize(arr, options))
+            elif verbose then
+                printfn "%d function(s) in %s:" fns.Length repo
                 printfn ""
-        else
-            printfn "%d function(s):" fns.Length
-            for f in fns do
-                let joined = f.Params |> String.concat ", "
-                let ps = if f.Params.Length = 0 then "()" else sprintf "(%s)" joined
-                let desc = if f.Description <> "" then sprintf " — %s" f.Description else ""
-                printfn "  %s%s%s" f.Name ps desc
-        0
+                for f in fns do
+                    let joined = f.Params |> String.concat ", "
+                    let ps = if f.Params.Length = 0 then "()" else sprintf "(%s)" joined
+                    printfn "  %s%s" f.Name ps
+                    if f.Description <> "" then printfn "    %s" f.Description
+                    printfn "    body: %s" f.Body
+                    printfn ""
+            else
+                printfn "%d function(s):" fns.Length
+                for f in fns do
+                    let joined = f.Params |> String.concat ", "
+                    let ps = if f.Params.Length = 0 then "()" else sprintf "(%s)" joined
+                    let desc = if f.Description <> "" then sprintf " — %s" f.Description else ""
+                    printfn "  %s%s%s" f.Name ps desc
+            0
 
     | "fn-rm" ->
         match FunctionStore.remove repo fnName with
@@ -315,9 +320,9 @@ let main args =
                     |> Array.collect (fun batch ->
                         eprintfn "  Embedding batch of %d..." batch.Length
                         match EmbeddingService.embed cfg.EmbeddingUrl batch |> Async.AwaitTask |> Async.RunSynchronously with
-                        | Some embs -> embs
-                        | None ->
-                            eprintfn "  ⚠ Embedding failed — using zero vectors"
+                        | Ok embs -> embs
+                        | Error msg ->
+                            eprintfn "  ⚠ Embedding failed — %s. Using zero vectors." msg
                             Array.init batch.Length (fun _ -> [||]))
 
             let allEmbeddings = Array.append oldEmbeddings newEmbeddings

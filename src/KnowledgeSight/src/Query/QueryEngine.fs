@@ -141,6 +141,10 @@ module QueryEngine =
             let threshold = jsFloat opts "threshold" 0.7
             box (stamp "cluster" (Primitives.cluster index dir threshold)))) |> ignore
 
+        // hygiene
+        engine.SetValue("hygiene", Func<obj>(fun () ->
+            box (stamp "hygiene" (Primitives.hygiene index chunks repoRoot)))) |> ignore
+
         // gaps — use JsValue to avoid Jint's ToObject() conversion
         engine.SetValue("gaps", Func<Jint.Native.JsValue, obj>(fun opts ->
             let scope, minDocs, signal =

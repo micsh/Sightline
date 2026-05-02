@@ -19,6 +19,7 @@ type CodeSightConfig = {
     IndexDir: string
     SummaryCache: string
     EmbeddingUrl: string
+    EmbeddingTimeoutSeconds: int
     EmbeddingBatchSize: int
     LlmUrl: string
     LlmModel: string
@@ -33,10 +34,18 @@ type CodeSightConfig = {
     Scopes: ScopeDefinition[]
 }
 
+type CodeSightRuntimePaths = {
+    ParsersDir: string
+}
+
 module Config =
 
     let private defaultExtensions = [| ".fs"; ".fsi"; ".cs"; ".js"; ".ts"; ".py"; ".go"; ".rs" |]
     let private defaultExclude = [| "node_modules"; "bin"; "obj"; ".git"; "wwwroot"; "dist"; "target"; "vendor"; "__pycache__" |]
+    let private defaultEmbeddingUrl = "http://localhost:1234/v1/embeddings"
+    let private defaultEmbeddingTimeoutSeconds = 120
+    let private mergeExclude (customExclude: string[]) =
+        Array.append defaultExclude customExclude |> Array.distinct
 
     /// Auto-detect source directories by looking for common patterns.
     let private detectSrcDirs (repoRoot: string) =
@@ -64,21 +73,9 @@ module Config =
         scopes.ToArray()
 
     /// Load config from code-intel.json, or build defaults.
-    let load (repoRoot: string) =
+    let load (repoRoot: string) (runtime: CodeSightRuntimePaths) =
         let configPath = Path.Combine(repoRoot, "code-intel.json")
         let indexDir = Path.Combine(repoRoot, ".code-intel")
-
-        // Locate parsers: repo override → alongside exe → fallback
-        let exeDir = AppDomain.CurrentDomain.BaseDirectory
-        let parsersDir =
-            // 1. Per-repo override: .code-intel/parsers/
-            let repoOverride = Path.Combine(repoRoot, ".code-intel", "parsers")
-            if Directory.Exists repoOverride && File.Exists(Path.Combine(repoOverride, "ts-chunker.js")) then repoOverride
-            else
-            // 2. Alongside the exe
-            let exeParsers = Path.Combine(exeDir, "parsers")
-            if Directory.Exists exeParsers then exeParsers
-            else exeDir
 
         if File.Exists configPath then
             let json = File.ReadAllText(configPath)
@@ -95,21 +92,22 @@ module Config =
                 RepoRoot = repoRoot
                 SrcDirs = strArr "srcDirs" (detectSrcDirs repoRoot)
                 Extensions = strArr "extensions" defaultExtensions
-                Exclude = strArr "exclude" defaultExclude
+                Exclude = mergeExclude (strArr "exclude" [||])
                 IndexDir = str "indexDir" indexDir
                 SummaryCache = Path.Combine(indexDir, ".summary-cache.tsv")
-                EmbeddingUrl = str "embeddingUrl" "http://localhost:1234/v1/embeddings"
+                EmbeddingUrl = str "embeddingUrl" defaultEmbeddingUrl
+                EmbeddingTimeoutSeconds = int' "embeddingTimeoutSeconds" defaultEmbeddingTimeoutSeconds
                 EmbeddingBatchSize = int' "embeddingBatchSize" 50
-                LlmUrl = str "llmUrl" "http://127.0.0.1:8090/v1/chat/completions"
+                LlmUrl = str "llmUrl" "http://localhost:8090/v1/chat/completions"
                 LlmModel = str "llmModel" "bonsai"
                 LlmMaxTokens = int' "llmMaxTokens" 60
                 LlmTemperature = float' "llmTemperature" 0.0
-                ChunkerScript = str "chunkerScript" (Path.Combine(parsersDir, "ts-chunker.js"))
+                ChunkerScript = str "chunkerScript" (Path.Combine(runtime.ParsersDir, "ts-chunker.js"))
                 NodePath = str "nodePath" "node"
                 MaxChunkChars = int' "maxChunkChars" 3000
                 NoiseWords = strArr "noiseWords" [||]
                 UtilityPatterns = strArr "utilityPatterns" [| "Helper"; "Utils"; "Common"; "Shared" |]
-                StagesDir = Path.Combine(parsersDir, "stages")
+                StagesDir = Path.Combine(runtime.ParsersDir, "stages")
                 Scopes =
                     match root.TryGetProperty("scopes") with
                     | true, scopesEl ->
@@ -131,18 +129,19 @@ module Config =
                 Exclude = defaultExclude
                 IndexDir = indexDir
                 SummaryCache = Path.Combine(indexDir, ".summary-cache.tsv")
-                EmbeddingUrl = "http://localhost:1234/v1/embeddings"
+                EmbeddingUrl = defaultEmbeddingUrl
+                EmbeddingTimeoutSeconds = defaultEmbeddingTimeoutSeconds
                 EmbeddingBatchSize = 50
-                LlmUrl = "http://127.0.0.1:8090/v1/chat/completions"
+                LlmUrl = "http://localhost:8090/v1/chat/completions"
                 LlmModel = "bonsai"
                 LlmMaxTokens = 60
                 LlmTemperature = 0.0
-                ChunkerScript = Path.Combine(parsersDir, "ts-chunker.js")
+                ChunkerScript = Path.Combine(runtime.ParsersDir, "ts-chunker.js")
                 NodePath = "node"
                 MaxChunkChars = 3000
                 NoiseWords = [||]
                 UtilityPatterns = [| "Helper"; "Utils"; "Common"; "Shared" |]
-                StagesDir = Path.Combine(parsersDir, "stages")
+                StagesDir = Path.Combine(runtime.ParsersDir, "stages")
                 Scopes = detectScopes repoRoot srcDirs
             }
 

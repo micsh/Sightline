@@ -33,6 +33,9 @@ type CodeIndex = {
     Imports: (string * string)[]       // (filePath, importedModule)
     TypeRefs: (string * string[])[]    // (filePath, typeNames)
     EmbeddingDim: int
+    SemanticState: string
+    SemanticMessage: string
+    FailedEmbeddingBatches: int
 }
 
 /// Signature extracted from tree-sitter AST.

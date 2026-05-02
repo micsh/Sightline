@@ -22,4 +22,3 @@ module FunctionStore =
     let save = FunctionStore.save config
     let add = FunctionStore.add config
     let remove = FunctionStore.remove config
-    let toJsDeclarations = FunctionStore.toJsDeclarations

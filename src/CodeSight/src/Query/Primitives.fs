@@ -3,6 +3,7 @@ namespace AITeam.CodeSight
 open System
 open System.Collections.Generic
 open System.IO
+open System.Globalization
 open System.Text.RegularExpressions
 open AITeam.Sight.Core
 
@@ -82,10 +83,18 @@ module DictHelper =
 /// All 12 query primitives. Each returns Dictionary/Array that Jint can consume.
 module Primitives =
 
-    let private embedQuery (url: string) (query: string) =
-        EmbeddingService.embed url [| query |]
+    let private embedQuery (timeoutSeconds: int) (url: string) (query: string) =
+        EmbeddingService.embedWithTimeout (TimeSpan.FromSeconds(float timeoutSeconds)) url [| query |]
         |> Async.AwaitTask |> Async.RunSynchronously
-        |> Option.map (fun e -> e.[0])
+        |> Result.map (fun e -> e.[0])
+
+    let private semanticUnavailable (index: CodeIndex) (operation: string) =
+        let detail =
+            if String.IsNullOrWhiteSpace(index.SemanticMessage) then
+                sprintf "%s is unavailable because semantic state is %s." operation index.SemanticState
+            else
+                sprintf "%s is unavailable because semantic state is %s: %s" operation index.SemanticState index.SemanticMessage
+        [| mdict [ "error", box detail; "semanticState", box index.SemanticState ] |]
 
     /// First meaningful code line (skip blanks, comments, attributes).
     let private previewLine (content: string) =
@@ -114,24 +123,28 @@ module Primitives =
 
     // ── search ──
 
-    let search (index: CodeIndex) (session: QuerySession) (chunks: CodeChunk[] option) (embeddingUrl: string)
+    let search (index: CodeIndex) (session: QuerySession) (chunks: CodeChunk[] option) (embeddingUrl: string) (embeddingTimeoutSeconds: int)
                (query: string) (limit: int) (kind: string) (filePattern: string) =
-        match embedQuery embeddingUrl query with
-        | None -> [||]
-        | Some qEmb ->
-            IndexStore.search index qEmb (limit * 3)
-            |> Array.filter (fun (i, _) ->
-                let c = index.Chunks.[i]
-                (String.IsNullOrEmpty(kind) || c.Kind = kind) &&
-                (String.IsNullOrEmpty(filePattern) || c.FilePath.Contains(filePattern, StringComparison.OrdinalIgnoreCase)))
-            |> Array.truncate limit
-            |> Array.map (fun (i, sim) ->
-                let c = index.Chunks.[i]
-                let id = session.NextRef(i)
-                let preview = findSource chunks c |> Option.map (fun ch -> previewLine ch.Content) |> Option.defaultValue ""
-                let d = mdict [ "id", box id; "score", box (Math.Round(float sim, 3)); "kind", box c.Kind; "name", box c.Name; "file", box (Path.GetFileName c.FilePath); "path", box c.FilePath; "line", box c.StartLine; "signature", box c.Signature; "summary", box c.Summary; "preview", box preview ]
-                for kv in c.Extra do d.[kv.Key] <- box kv.Value
-                d)
+        if index.SemanticState <> "full" then
+            semanticUnavailable index "search"
+        else
+            match embedQuery embeddingTimeoutSeconds embeddingUrl query with
+            | Error msg ->
+                [| mdict [ "error", box (sprintf "search is unavailable because query embedding failed: %s (configured embeddingTimeoutSeconds=%s)" msg (embeddingTimeoutSeconds.ToString(CultureInfo.InvariantCulture))) ] |]
+            | Ok qEmb ->
+                IndexStore.search index qEmb (limit * 3)
+                |> Array.filter (fun (i, _) ->
+                    let c = index.Chunks.[i]
+                    (String.IsNullOrEmpty(kind) || c.Kind = kind) &&
+                    (String.IsNullOrEmpty(filePattern) || c.FilePath.Contains(filePattern, StringComparison.OrdinalIgnoreCase)))
+                |> Array.truncate limit
+                |> Array.map (fun (i, sim) ->
+                    let c = index.Chunks.[i]
+                    let id = session.NextRef(i)
+                    let preview = findSource chunks c |> Option.map (fun ch -> previewLine ch.Content) |> Option.defaultValue ""
+                    let d = mdict [ "id", box id; "score", box (Math.Round(float sim, 3)); "kind", box c.Kind; "name", box c.Name; "file", box (Path.GetFileName c.FilePath); "path", box c.FilePath; "line", box c.StartLine; "signature", box c.Signature; "summary", box c.Summary; "preview", box preview ]
+                    for kv in c.Extra do d.[kv.Key] <- box kv.Value
+                    d)
 
     // ── context ──
 
@@ -217,16 +230,19 @@ module Primitives =
     // ── similar ──
 
     let similar (index: CodeIndex) (session: QuerySession) (refId: string) (limit: int) =
-        match session.GetRef(refId) with
-        | None -> [| mdict [ "error", box (sprintf "ref %s not found" refId) ] |]
-        | Some chunkIdx ->
-            IndexStore.similar index chunkIdx limit true
-            |> Array.map (fun (i, sim) ->
-                let c = index.Chunks.[i]
-                let id = session.NextRef(i)
-                let d = mdict [ "id", box id; "score", box (Math.Round(float sim, 3)); "kind", box c.Kind; "name", box c.Name; "file", box (Path.GetFileName c.FilePath); "line", box c.StartLine; "signature", box c.Signature; "summary", box c.Summary ]
-                for kv in c.Extra do d.[kv.Key] <- box kv.Value
-                d)
+        if index.SemanticState <> "full" then
+            semanticUnavailable index "similar"
+        else
+            match session.GetRef(refId) with
+            | None -> [| mdict [ "error", box (sprintf "ref %s not found" refId) ] |]
+            | Some chunkIdx ->
+                IndexStore.similar index chunkIdx limit true
+                |> Array.map (fun (i, sim) ->
+                    let c = index.Chunks.[i]
+                    let id = session.NextRef(i)
+                    let d = mdict [ "id", box id; "score", box (Math.Round(float sim, 3)); "kind", box c.Kind; "name", box c.Name; "file", box (Path.GetFileName c.FilePath); "line", box c.StartLine; "signature", box c.Signature; "summary", box c.Summary ]
+                    for kv in c.Extra do d.[kv.Key] <- box kv.Value
+                    d)
 
     // ── grep ──
 
